@@ -1,7 +1,20 @@
 package kvsrv
 
+type ClientArgs interface {
+	set(clientId, reqId int)
+}
+type BaseArgs struct {
+	ReqId int
+	ClientId int
+}
+func (a *BaseArgs) set (clientId, reqId int){
+	a.ReqId = reqId
+	a.ClientId = clientId
+}
+
 // Put or Append
 type PutAppendArgs struct {
+	BaseArgs
 	Key   string
 	Value string
 	// You'll have to add definitions here.
@@ -14,6 +27,7 @@ type PutAppendReply struct {
 }
 
 type GetArgs struct {
+	BaseArgs
 	Key string
 	// You'll have to add definitions here.
 }
