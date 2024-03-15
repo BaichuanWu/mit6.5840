@@ -598,6 +598,9 @@ func (cfg *config) one(cmd interface{}, expectedServers int, retry bool) int {
 		}
 	}
 	if cfg.checkFinished() == false {
+		for _, r:=range cfg.rafts {
+			DPrintf("%v",r)
+		}
 		cfg.t.Fatalf("one(%v) failed to reach agreement", cmd)
 	}
 	return -1

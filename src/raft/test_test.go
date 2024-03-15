@@ -465,6 +465,10 @@ func TestRejoin3B(t *testing.T) {
 	// leader network failure
 	leader1 := cfg.checkOneLeader()
 	cfg.disconnect(leader1)
+	DPrintf("leader1:%d", leader1)
+	for _, r:=range cfg.rafts {
+		DPrintf("%v",r)
+	}
 
 	// make old leader try to agree on some entries
 	cfg.rafts[leader1].Start(102)
@@ -477,9 +481,14 @@ func TestRejoin3B(t *testing.T) {
 	// new leader network failure
 	leader2 := cfg.checkOneLeader()
 	cfg.disconnect(leader2)
+	DPrintf("leader2:%d", leader2)
 
 	// old leader connected again
 	cfg.connect(leader1)
+	DPrintf("before 104")
+	for _, r:=range cfg.rafts {
+		DPrintf("%v",r)
+	}
 
 	cfg.one(104, 2, true)
 
