@@ -740,6 +740,7 @@ func TestPersist23C(t *testing.T) {
 		cfg.one(10+index, servers, true)
 		index++
 
+		DPrintf("11111111")
 		leader1 := cfg.checkOneLeader()
 
 		cfg.disconnect((leader1 + 1) % servers)
@@ -748,6 +749,7 @@ func TestPersist23C(t *testing.T) {
 		cfg.one(10+index, servers-2, true)
 		index++
 
+		DPrintf("22222")
 		cfg.disconnect((leader1 + 0) % servers)
 		cfg.disconnect((leader1 + 3) % servers)
 		cfg.disconnect((leader1 + 4) % servers)
@@ -762,6 +764,7 @@ func TestPersist23C(t *testing.T) {
 		cfg.start1((leader1+3)%servers, cfg.applier)
 		cfg.connect((leader1 + 3) % servers)
 
+		DPrintf("33333333")
 		cfg.one(10+index, servers-2, true)
 		index++
 

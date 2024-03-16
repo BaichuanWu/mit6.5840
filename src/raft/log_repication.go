@@ -49,8 +49,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	if args.Term >= rf.currentTerm {
-		rf.currentTerm = args.Term
-		rf.state = StateFollower
+		rf.unLockToFollower(args.Term)
 		reply.Success = true
 	}
 	reply.XLen = len(rf.log)
@@ -94,8 +93,7 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 	if ok {
 		rf.mu.Lock()
 		if reply.Term > rf.currentTerm {
-			rf.state = StateFollower
-			rf.currentTerm = reply.Term
+			rf.unLockToFollower(reply.Term)
 		} else if reply.Success {
 			rf.nextIndex[server] = args.PrevLogIndex + len(args.Entries) + 1
 			rf.matchIndex[server] = rf.nextIndex[server] - 1

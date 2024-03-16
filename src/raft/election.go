@@ -1,7 +1,6 @@
 package raft
 
 import (
-	"fmt"
 	"math/rand"
 	"time"
 )
@@ -43,19 +42,18 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	reply.VoteGranted = false
 	if args.Term > rf.currentTerm {
 		rf.votedFor = -1
-		rf.currentTerm = args.Term
-		rf.state = StateFollower
+		rf.unLockToFollower(args.Term)
 	}
 	if rf.votedFor == -1 && rf.currentTerm == args.Term {
 		lastLogIndex := len(rf.log)-1
 		lastLogTerm := rf.log[lastLogIndex].Term
 		if args.LastLogTerm > lastLogTerm || (args.LastLogTerm==lastLogTerm && args.LastLogIndex >= lastLogIndex) {
 			rf.votedFor = args.CandidatedId
+			rf.persist()
 			reply.VoteGranted = true
 			rf.lastConnected = time.Now()
 		}
 	}
-	rf.logging(fmt.Sprintf("vote from %d to %d args:%v reply:%v", args.CandidatedId, rf.me, args, reply))
 	reply.Term = rf.currentTerm
 }
 
@@ -97,15 +95,14 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 		}
 	}
 	if reply.Term > rf.currentTerm {
-		rf.currentTerm = reply.Term
-		rf.state = StateCandidate
+		rf.unLockToFollower(reply.Term)
 		rf.lastConnected = time.Now()
 	}
 	return ok
 }
 
 func (rf *Raft) unLockToLeader() {
-	rf.logging("become leader ")
+	// rf.logging("become leader ")
 	rf.state = StateLeader
 	rf.nextIndex = make([]int, len(rf.peers))
 	rf.matchIndex = make([]int, len(rf.peers))
@@ -115,11 +112,21 @@ func (rf *Raft) unLockToLeader() {
 
 }
 
+
+func (rf *Raft) unLockToFollower(term int) {
+	// rf.logging("become leader ")
+	rf.state = StateFollower
+	rf.currentTerm = term
+	rf.persist()
+}
+
+
 func (rf *Raft) unLockToCandidate() {
 	rf.votedGranted = 1
 	rf.votedFor = rf.me
 	rf.currentTerm++
 	rf.state = StateCandidate
+	rf.persist()
 	rf.resetElectionTimeout()
 }
 
