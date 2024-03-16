@@ -17,6 +17,10 @@ type AppendEntriesArgs struct {
 type AppendEntriesReply struct {
 	Term    int
 	Success bool
+	// optumize in page 7-8
+	XTerm int
+	XIndex int
+	XLen int
 }
 
 
@@ -49,23 +53,40 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		rf.state = StateFollower
 		reply.Success = true
 	}
+	reply.XLen = len(rf.log)
 	if reply.Success {
-		if len(rf.log) > args.PrevLogIndex && rf.log[args.PrevLogIndex].Term == args.PrevLogTerm {
+		if reply.XLen - 1 >= args.PrevLogIndex && rf.log[args.PrevLogIndex].Term == args.PrevLogTerm {
 			if len(args.Entries) != 0 {
 				rf.log = append(rf.log[:args.PrevLogIndex+1], args.Entries...)
 			}
 			// rf.logging(fmt.Sprintf("req:%v", args))
 			commitIndex :=args.LeaderCommit 
-			if len(rf.log)- 1 <= commitIndex {
-				commitIndex = len(rf.log) - 1
+			if reply.XLen- 1 < commitIndex {
+				commitIndex = reply.XLen - 1
 			}
 			rf.unLockUpdateCommitIndex(commitIndex)
 		} else {
+			if reply.XLen - 1 >= args.PrevLogIndex {
+				reply.XTerm = rf.log[args.PrevLogIndex].Term
+				lastIndex:=args.PrevLogIndex - 1
+				for ;lastIndex>0&&rf.log[lastIndex].Term==reply.XTerm;lastIndex--{
+				}
+				reply.XIndex = lastIndex + 1
+			} 
 			reply.Success = false
 		}
 	}
 	reply.Term = rf.currentTerm
 	rf.lastConnected = time.Now()
+}
+
+func (rf *Raft) getLastTermLog(term int)  int {
+	nextIndex := sort.Search(len(rf.log), func(i int) bool { return rf.log[i].Term > term })
+	if nextIndex==0 || len(rf.log) < nextIndex || rf.log[nextIndex-1].Term != term {
+		return -1
+	} else {
+		return nextIndex -1
+	}
 }
 
 func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
@@ -79,8 +100,16 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 			rf.nextIndex[server] = args.PrevLogIndex + len(args.Entries) + 1
 			rf.matchIndex[server] = rf.nextIndex[server] - 1
 			rf.unLockCheckUpdateLeaderCommitIndex()
-		} else if rf.nextIndex[server] > 1 {
-			rf.nextIndex[server]--
+		} else {
+			if reply.XTerm==0{
+				rf.nextIndex[server] = reply.XLen
+			} else {
+				if lastIndex:=rf.getLastTermLog(reply.XTerm);lastIndex==-1 {
+					rf.nextIndex[server] = reply.XIndex
+				} else {
+					rf.nextIndex[server] = lastIndex
+				}
+			}
 		}
 		rf.mu.Unlock()
 	}
