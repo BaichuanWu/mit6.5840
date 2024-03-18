@@ -18,12 +18,9 @@ package raft
 //
 
 import (
-	//	"bytes"
 	"sync"
 	"sync/atomic"
 	"time"
-
-	//	"6.5840/labgob"
 	"6.5840/labrpc"
 )
 
@@ -63,6 +60,7 @@ type ApplyMsg struct {
 	SnapshotIndex int
 }
 
+
 // A Go object implementing a single Raft peer.
 type Raft struct {
 	mu              sync.Mutex          // Lock to protect shared access to this peer's state
@@ -72,7 +70,7 @@ type Raft struct {
 	dead            int32               // set by Kill()
 	currentTerm     int
 	votedFor        int
-	log             []LogEntry
+	log             *SnapshotLog
 	applyCh         chan ApplyMsg
 	commitIndex     int
 	lastApplied     int
@@ -107,14 +105,6 @@ func (rf *Raft) GetState() (int, bool) {
 }
 
 
-// the service says it has created a snapshot that has
-// all info up to and including index. this means the
-// service no longer needs the log through (and including)
-// that index. Raft should now trim its log as much as possible.
-func (rf *Raft) Snapshot(index int, snapshot []byte) {
-	// Your code here (2D).
-
-}
 
 // the service using Raft (e.g. a k/v server) wants to start
 // agreement on the next command to be appended to Raft's log. if this
@@ -131,11 +121,11 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	index := len(rf.log)
+	index := rf.log.len()
 	term := rf.currentTerm
 	isLeader := rf.state == StateLeader
 	if isLeader {
-		rf.log = append(rf.log, LogEntry{Term: term, Command: command})
+		rf.log.append(LogEntry{Term: term, Command: command})
 		rf.persist()
 	}
 	return index, term, isLeader
@@ -191,7 +181,8 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.me = me
 	rf.state = StateFollower
 	rf.applyCh = applyCh
-	rf.log = append(rf.log, LogEntry{})
+	rf.log = new(SnapshotLog)
+	rf.log.append(LogEntry{})
 	// Your initialization code here (2A, 2B, 2C).
 	rf.resetElectionTimeout()
 	// initialize from state persisted before a crash

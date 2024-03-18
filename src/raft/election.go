@@ -45,8 +45,8 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		rf.unLockToFollower(args.Term)
 	}
 	if rf.votedFor == -1 && rf.currentTerm == args.Term {
-		lastLogIndex := len(rf.log)-1
-		lastLogTerm := rf.log[lastLogIndex].Term
+		lastLogIndex := rf.log.len()-1
+		lastLogTerm := rf.log.at(lastLogIndex).Term
 		if args.LastLogTerm > lastLogTerm || (args.LastLogTerm==lastLogTerm && args.LastLogIndex >= lastLogIndex) {
 			rf.votedFor = args.CandidatedId
 			rf.persist()
@@ -107,7 +107,7 @@ func (rf *Raft) unLockToLeader() {
 	rf.nextIndex = make([]int, len(rf.peers))
 	rf.matchIndex = make([]int, len(rf.peers))
 	for idx := range rf.nextIndex {
-		rf.nextIndex[idx] = len(rf.log)
+		rf.nextIndex[idx] = rf.log.len()
 	}
 
 }
@@ -141,8 +141,8 @@ func (rf *Raft) broadcastVote() {
 	rf.unLockToCandidate()
 	reqArgs.Term = rf.currentTerm
 	reqArgs.CandidatedId = rf.me
-	reqArgs.LastLogIndex = len(rf.log)-1
-	reqArgs.LastLogTerm = rf.log[reqArgs.LastLogIndex].Term
+	reqArgs.LastLogIndex = rf.log.len()-1
+	reqArgs.LastLogTerm = rf.log.at(reqArgs.LastLogIndex).Term
 	rf.mu.Unlock()
 	for idx := range rf.peers {
 		if idx != rf.me {

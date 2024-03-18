@@ -22,7 +22,6 @@ func (rf *Raft) persist() {
 	e.Encode(rf.currentTerm)
 	e.Encode(rf.votedFor)
 	e.Encode(rf.log)
-	// rf.lastApplied = rf.commitIndex
 	raftstate := w.Bytes()
 	rf.persister.Save(raftstate, nil)
 }
@@ -37,9 +36,9 @@ func (rf *Raft) readPersist(data []byte) {
 	r := bytes.NewBuffer(data)
 	d := labgob.NewDecoder(r)
 	var currentTerm, votedFor int
-	var log []LogEntry
+	var log *SnapshotLog
 	if d.Decode(&currentTerm) != nil ||
-	   d.Decode(&votedFor) != nil || d.Decode(&log)!=nil{
+	   d.Decode(&votedFor) != nil || d.Decode(log)!=nil{
 		fmt.Println("fail to read Persist")
 	} else {
 	  rf.currentTerm = currentTerm
