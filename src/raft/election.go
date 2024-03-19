@@ -45,9 +45,9 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		rf.unLockToFollower(args.Term)
 	}
 	if rf.votedFor == -1 && rf.currentTerm == args.Term {
-		lastLogIndex := rf.log.len()-1
+		lastLogIndex := rf.log.len() - 1
 		lastLogTerm := rf.log.at(lastLogIndex).Term
-		if args.LastLogTerm > lastLogTerm || (args.LastLogTerm==lastLogTerm && args.LastLogIndex >= lastLogIndex) {
+		if args.LastLogTerm > lastLogTerm || (args.LastLogTerm == lastLogTerm && args.LastLogIndex >= lastLogIndex) {
 			rf.votedFor = args.CandidatedId
 			rf.persist()
 			reply.VoteGranted = true
@@ -109,9 +109,9 @@ func (rf *Raft) unLockToLeader() {
 	for idx := range rf.nextIndex {
 		rf.nextIndex[idx] = rf.log.len()
 	}
+	DPrintf("%s become leader nextIds %v", rf.info(), rf.nextIndex)
 
 }
-
 
 func (rf *Raft) unLockToFollower(term int) {
 	// rf.logging("become leader ")
@@ -119,7 +119,6 @@ func (rf *Raft) unLockToFollower(term int) {
 	rf.currentTerm = term
 	rf.persist()
 }
-
 
 func (rf *Raft) unLockToCandidate() {
 	rf.votedGranted = 1
@@ -141,7 +140,7 @@ func (rf *Raft) broadcastVote() {
 	rf.unLockToCandidate()
 	reqArgs.Term = rf.currentTerm
 	reqArgs.CandidatedId = rf.me
-	reqArgs.LastLogIndex = rf.log.len()-1
+	reqArgs.LastLogIndex = rf.log.len() - 1
 	reqArgs.LastLogTerm = rf.log.at(reqArgs.LastLogIndex).Term
 	rf.mu.Unlock()
 	for idx := range rf.peers {

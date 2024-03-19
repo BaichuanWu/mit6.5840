@@ -465,10 +465,6 @@ func TestRejoin3B(t *testing.T) {
 	// leader network failure
 	leader1 := cfg.checkOneLeader()
 	cfg.disconnect(leader1)
-	DPrintf("leader1:%d", leader1)
-	for _, r:=range cfg.rafts {
-		DPrintf("%v",r)
-	}
 
 	// make old leader try to agree on some entries
 	cfg.rafts[leader1].Start(102)
@@ -481,14 +477,9 @@ func TestRejoin3B(t *testing.T) {
 	// new leader network failure
 	leader2 := cfg.checkOneLeader()
 	cfg.disconnect(leader2)
-	DPrintf("leader2:%d", leader2)
 
 	// old leader connected again
 	cfg.connect(leader1)
-	DPrintf("before 104")
-	for _, r:=range cfg.rafts {
-		DPrintf("%v",r)
-	}
 
 	cfg.one(104, 2, true)
 
@@ -740,7 +731,6 @@ func TestPersist23C(t *testing.T) {
 		cfg.one(10+index, servers, true)
 		index++
 
-		DPrintf("11111111")
 		leader1 := cfg.checkOneLeader()
 
 		cfg.disconnect((leader1 + 1) % servers)
@@ -749,7 +739,6 @@ func TestPersist23C(t *testing.T) {
 		cfg.one(10+index, servers-2, true)
 		index++
 
-		DPrintf("22222")
 		cfg.disconnect((leader1 + 0) % servers)
 		cfg.disconnect((leader1 + 3) % servers)
 		cfg.disconnect((leader1 + 4) % servers)
@@ -764,7 +753,6 @@ func TestPersist23C(t *testing.T) {
 		cfg.start1((leader1+3)%servers, cfg.applier)
 		cfg.connect((leader1 + 3) % servers)
 
-		DPrintf("33333333")
 		cfg.one(10+index, servers-2, true)
 		index++
 
@@ -1158,11 +1146,13 @@ func snapcommon(t *testing.T, name string, disconnect bool, reliable bool, crash
 			cfg.t.Fatalf("Log size too large")
 		}
 		if disconnect {
+
 			// reconnect a follower, who maybe behind and
 			// needs to rceive a snapshot to catch up.
 			cfg.connect(victim)
 			cfg.one(rand.Int(), servers, true)
 			leader1 = cfg.checkOneLeader()
+
 		}
 		if crash {
 			cfg.start1(victim, cfg.applierSnap)

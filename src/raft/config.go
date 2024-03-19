@@ -195,6 +195,7 @@ func (cfg *config) ingestSnap(i int, snapshot []byte, index int) string {
 		return "snapshot Decode() error"
 	}
 	if index != -1 && index != lastIncludedIndex {
+		DPrintf("not match %d  -------- decode %d", index, lastIncludedIndex)
 		err := fmt.Sprintf("server %v snapshot doesn't match m.SnapshotIndex", i)
 		return err
 	}
@@ -219,11 +220,15 @@ func (cfg *config) applierSnap(i int, applyCh chan ApplyMsg) {
 
 	for m := range applyCh {
 		err_msg := ""
+
+		// DPrintf("checking cmd %d valid %v snap %d valid %v", m.CommandIndex, m.CommandValid, m.SnapshotIndex, m.SnapshotValid)
 		if m.SnapshotValid {
+			// DPrintf("checking snap %d",m.SnapshotIndex)
 			cfg.mu.Lock()
 			err_msg = cfg.ingestSnap(i, m.Snapshot, m.SnapshotIndex)
 			cfg.mu.Unlock()
 		} else if m.CommandValid {
+			// DPrintf("checking command %d lastApplied %d", m.CommandIndex, cfg.lastApplied[i])
 			if m.CommandIndex != cfg.lastApplied[i]+1 {
 				err_msg = fmt.Sprintf("server %v apply out of order, expected index %v, got %v", i, cfg.lastApplied[i]+1, m.CommandIndex)
 			}
@@ -257,7 +262,7 @@ func (cfg *config) applierSnap(i int, applyCh chan ApplyMsg) {
 			// Ignore other types of ApplyMsg.
 		}
 		if err_msg != "" {
-			log.Fatalf("apply error: %v", err_msg)
+			log.Fatalf("apply error: 22222%v", err_msg)
 			cfg.applyErr[i] = err_msg
 			// keep reading after error so that Raft doesn't block
 			// holding locks...
@@ -598,8 +603,8 @@ func (cfg *config) one(cmd interface{}, expectedServers int, retry bool) int {
 		}
 	}
 	if cfg.checkFinished() == false {
-		for _, r:=range cfg.rafts {
-			DPrintf("%v",r)
+		for _, r := range cfg.rafts {
+			DPrintf(r.info())
 		}
 		cfg.t.Fatalf("one(%v) failed to reach agreement", cmd)
 	}

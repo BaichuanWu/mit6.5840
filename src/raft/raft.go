@@ -18,9 +18,11 @@ package raft
 //
 
 import (
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
+
 	"6.5840/labrpc"
 )
 
@@ -37,6 +39,7 @@ const (
 	checkTimeoutEnd      = 350
 	electionTimeoutStart = 400
 	electionTimeoutEnd   = 700
+	applyInterval        = 100
 )
 
 // as each Raft peer becomes aware that successive log entries are
@@ -60,7 +63,6 @@ type ApplyMsg struct {
 	SnapshotIndex int
 }
 
-
 // A Go object implementing a single Raft peer.
 type Raft struct {
 	mu              sync.Mutex          // Lock to protect shared access to this peer's state
@@ -80,6 +82,7 @@ type Raft struct {
 	lastConnected   time.Time
 	electionTimeout time.Duration
 	votedGranted    int
+	applyMsg        []ApplyMsg
 
 	// Your data here (2A, 2B, 2C).
 	// Look at the paper's Figure 2 for a description of what
@@ -104,8 +107,6 @@ func (rf *Raft) GetState() (int, bool) {
 	return term, isleader
 }
 
-
-
 // the service using Raft (e.g. a k/v server) wants to start
 // agreement on the next command to be appended to Raft's log. if this
 // server isn't the leader, returns false. otherwise start the
@@ -126,6 +127,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	isLeader := rf.state == StateLeader
 	if isLeader {
 		rf.log.append(LogEntry{Term: term, Command: command})
+		// DPrintf("start append server %s", rf.info())
 		rf.persist()
 	}
 	return index, term, isLeader
@@ -150,8 +152,8 @@ func (rf *Raft) killed() bool {
 	return z == 1
 }
 
-func (rf *Raft) logging(pref string) {
-	DPrintf("%s raft: %d term:%d state: %d  logs:%v lastCommit:%d\n", pref, rf.me, rf.currentTerm, rf.state, rf.log, rf.commitIndex)
+func (rf *Raft) info() string {
+	return fmt.Sprintf("raft: %d term:%d state: %d  logs:lastIndex %d log %v lastCommit:%d nextIds:%v\n", rf.me, rf.currentTerm, rf.state, rf.log.LastIndex, rf.log.Log, rf.commitIndex, rf.nextIndex)
 }
 
 func (rf *Raft) ticker() {
@@ -162,7 +164,6 @@ func (rf *Raft) ticker() {
 		time.Sleep(heartBeatInterval * time.Millisecond)
 	}
 }
-
 
 // the service or tester wants to create a Raft server. the ports
 // of all the Raft servers (including this one) are in peers[]. this
@@ -182,7 +183,6 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.state = StateFollower
 	rf.applyCh = applyCh
 	rf.log = new(SnapshotLog)
-	rf.log.append(LogEntry{})
 	// Your initialization code here (2A, 2B, 2C).
 	rf.resetElectionTimeout()
 	// initialize from state persisted before a crash
@@ -191,6 +191,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	// start ticker goroutine to start elections
 	go rf.ticker()
 	go rf.timeoutTicker()
+	go rf.applyTicker()
 
 	return rf
 }
