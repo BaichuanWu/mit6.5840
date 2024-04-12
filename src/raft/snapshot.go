@@ -2,7 +2,6 @@ package raft
 
 import (
 	"fmt"
-
 	"6.5840/labgob"
 )
 
@@ -17,8 +16,11 @@ type SnapshotLog struct {
 var placeholder = LogEntry{}
 
 func (lg *SnapshotLog) info() string {
-	return fmt.Sprintf("lastTerm:%d lastIndex:%d Log:%v", lg.LastTerm, lg.LastIndex, lg.Log)
-
+	start := len(lg.Log) -5
+	if start < 0 {
+		start = 0
+	}
+	return fmt.Sprintf("lastTerm:%d lastIndex:%d LogLen:%d last five log:%v", lg.LastTerm, lg.LastIndex, len(lg.Log), lg.Log[start: len(lg.Log)])
 }
 
 func (lg *SnapshotLog) encode(e *labgob.LabEncoder) {
@@ -36,12 +38,12 @@ func logFromPersist(d *labgob.LabDecoder) *SnapshotLog {
 }
 
 func (lg *SnapshotLog) at(index int) LogEntry {
-	if index == 0 {
-		return placeholder
+	if index == lg.LastIndex {
+		return LogEntry{Term: lg.LastTerm}
 	}
 	logIndex := index - lg.LastIndex - 1
 	if logIndex < 0 {
-		return LogEntry{Term: lg.LastTerm}
+		return placeholder
 	}
 	return lg.Log[logIndex]
 }
@@ -81,6 +83,7 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 	rf.log.Bytes = snapshot
 	rf.log.setLog(rf.log.slice(index+1, 0))
 	rf.log.LastIndex = index
+	rf.lastSnapshotApplied = index
 	// rf.applyMsg = append(rf.applyMsg, ApplyMsg{SnapshotValid: true, Snapshot: snapshot, SnapshotTerm: rf.log.LastTerm, SnapshotIndex: rf.log.LastIndex})
 	rf.persist()
 	rf.mu.Unlock()
@@ -136,12 +139,7 @@ func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapsho
 	rf.log.LastIndex = args.LastIncludedIndex
 	rf.log.Bytes = args.Data
 	rf.log.Log = make([]LogEntry, 0)
-	if rf.commitIndex < args.LastIncludedIndex {
-		rf.commitIndex = args.LastIncludedIndex
-		rf.lastApplied = args.LastIncludedIndex
-	}
-	rf.applyMsg = append(rf.applyMsg, ApplyMsg{SnapshotValid: true, Snapshot: rf.log.Bytes, SnapshotTerm: rf.log.LastTerm, SnapshotIndex: rf.log.LastIndex})
-	// DPrintf("apply install msg %v", rf.applyMsg[len(rf.applyMsg)-1])
+	rf.applyCond.Signal()
 }
 
 func (rf *Raft) sendInstallSnapshot(server int, args *InstallSnapshotArgs, reply *InstallSnapshotReply) bool {

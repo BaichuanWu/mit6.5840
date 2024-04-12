@@ -21,7 +21,9 @@ type AppendEntriesReply struct {
 	XTerm  int
 	XIndex int
 	XLen   int
+	Stale bool
 }
+
 
 func (rf *Raft) unLockCheckUpdateLeaderCommitIndex() {
 	sortIndex := make([]int, len(rf.peers))
@@ -35,17 +37,12 @@ func (rf *Raft) unLockCheckUpdateLeaderCommitIndex() {
 
 }
 
+
 func (rf *Raft) unLockUpdateCommitIndex(index int) {
-	// DPrintf("idx %d commitIdx %d  lastApplied %d last %d", index, rf.commitIndex,rf.lastApplied, rf.log.LastIndex)
+	// log.Printf("server %d state:%d idx %d commitIdx %d  lastApplied %d log %s", rf.me,rf.state,index, rf.commitIndex,rf.lastApplied, rf.log.info())
 	if rf.commitIndex < index {
 		rf.commitIndex = index
-	}
-	if rf.lastApplied < rf.log.LastIndex {
-		rf.lastApplied = rf.log.LastIndex
-	}
-	for rf.lastApplied < rf.commitIndex {
-		rf.lastApplied++
-		rf.applyMsg = append(rf.applyMsg, ApplyMsg{CommandValid: true, Command: rf.log.at(rf.lastApplied).Command, CommandIndex: rf.lastApplied})
+		rf.applyCond.Signal()
 	}
 }
 
@@ -57,15 +54,25 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		rf.unLockToFollower(args.Term)
 		reply.Success = true
 	}
+	if args.LeaderCommit < rf.LeaderLastCommit[args.LeaderId] {
+		reply.Stale = true
+		reply.Success = false
+	}
+	rf.LeaderLastCommit[args.LeaderId] = args.LeaderCommit
 	reply.XLen = rf.log.len()
 	if reply.Success {
 		if reply.XLen-1 >= args.PrevLogIndex && rf.log.at(args.PrevLogIndex).Term == args.PrevLogTerm {
-			if len(args.Entries) != 0 {
-				rf.log.setLog(append(rf.log.slice(0, args.PrevLogIndex+1), args.Entries...))
-			}
 			commitIndex := args.LeaderCommit
 			if reply.XLen-1 < commitIndex {
 				commitIndex = reply.XLen - 1
+			}
+			if len(args.Entries) != 0 {
+				prevL := rf.log.len()
+				DPrintf("before server %d append log %s", rf.me, rf.log.info())
+				rf.log.setLog(append(rf.log.slice(0, args.PrevLogIndex+1), args.Entries...))
+				currentL := rf.log.len()
+				DPrintf("server %d append log %v len %d->%d %s", rf.me, args.Entries,prevL, currentL, rf.log.info())
+				rf.persist()
 			}
 			rf.unLockUpdateCommitIndex(commitIndex)
 		} else {
@@ -98,6 +105,9 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	if ok {
+		if reply.Stale {
+			return ok
+		}
 		if reply.Term > rf.currentTerm {
 			rf.unLockToFollower(reply.Term)
 		} else if reply.Success {
@@ -131,7 +141,6 @@ func (rf *Raft) broadcastAppendEntries() {
 				reply := &AppendEntriesReply{}
 				args := &AppendEntriesArgs{Term: rf.currentTerm, LeaderId: rf.me, LeaderCommit: rf.commitIndex}
 				args.PrevLogIndex = nextIdx - 1
-				// DPrintf("send to %d nextId:%d req:%v leader log %v matchIds %v",idx, nextIdx, args, rf.log.info(), rf.matchIndex)
 				if args.PrevLogIndex < rf.log.len() {
 					args.PrevLogTerm = rf.log.at(args.PrevLogIndex).Term
 				}

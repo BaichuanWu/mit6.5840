@@ -103,13 +103,13 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 
 func (rf *Raft) unLockToLeader() {
 	// rf.logging("become leader ")
+	DPrintf("server %d become leader log -------------- %v", rf.me, rf.log.Log)
 	rf.state = StateLeader
 	rf.nextIndex = make([]int, len(rf.peers))
 	rf.matchIndex = make([]int, len(rf.peers))
 	for idx := range rf.nextIndex {
 		rf.nextIndex[idx] = rf.log.len()
 	}
-	DPrintf("%s become leader nextIds %v", rf.info(), rf.nextIndex)
 
 }
 

@@ -1,0 +1,4 @@
+# 6.5840/raft
+../raft/election.go:6:2: "log" imported and not used
+../raft/persistence.go:6:2: "log" imported and not used
+FAIL	6.5840/kvraft [build failed]

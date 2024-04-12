@@ -1,6 +1,9 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 type Work struct {
 	name string
@@ -20,6 +23,9 @@ func (t *Task) getWork() Work {
 }
 
 func main() {
+	a := "ssss8781"
+	b := strings.TrimSuffix(a, "81")
+	fmt.Println(a,b)
 	works := make([]Work, 1)
 	works[0] = Work{"sss"}
 	t:=Task{works: works}

@@ -1,9 +1,10 @@
 package raft
 
 import (
-	"6.5840/labgob"
 	"bytes"
 	"fmt"
+
+	"6.5840/labgob"
 )
 
 // save Raft's persistent state to stable storage,
@@ -20,6 +21,7 @@ func (rf *Raft) persist() {
 	e := labgob.NewEncoder(w)
 	e.Encode(rf.currentTerm)
 	e.Encode(rf.votedFor)
+	DPrintf("server %d persist log %s",rf.me, rf.log.info())
 	rf.log.encode(e)
 	raftstate := w.Bytes()
 	rf.persister.Save(raftstate, rf.log.Bytes)
@@ -42,7 +44,8 @@ func (rf *Raft) readPersist(data []byte) {
 		rf.currentTerm = currentTerm
 		rf.votedFor = votedFor
 		rf.log = logFromPersist(d)
+		DPrintf("server %d read persist log %s",rf.me, rf.log.info())
+
 		rf.ReadSnapshot(rf.persister.ReadSnapshot())
-		DPrintf("%s set log lastIndex %d lastTerm %d len %d", rf.info(), rf.log.LastIndex, rf.log.LastTerm, rf.log.len())
 	}
 }

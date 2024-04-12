@@ -1,15 +1,18 @@
 package kvraft
 
 import (
-	"6.5840/labgob"
-	"6.5840/labrpc"
-	"6.5840/raft"
 	"log"
 	"sync"
 	"sync/atomic"
+	"time"
+
+	"6.5840/labgob"
+	"6.5840/labrpc"
+	"6.5840/raft"
 )
 
 const Debug = false
+const WaitCommitTime = 300 * time.Millisecond
 
 func DPrintf(format string, a ...interface{}) (n int, err error) {
 	if Debug {
@@ -18,32 +21,94 @@ func DPrintf(format string, a ...interface{}) (n int, err error) {
 	return
 }
 
-
 type Op struct {
 	// Your definitions here.
 	// Field names must start with capital letters,
 	// otherwise RPC will break.
+	Name     string
+	Key      string
+	Value    string
+	ReqId    int
+	ClientId int
+}
+type OpReply struct {
+	Err   Err
+	value string
+	op    Op
 }
 
 type KVServer struct {
-	mu      sync.Mutex
-	me      int
-	rf      *raft.Raft
-	applyCh chan raft.ApplyMsg
-	dead    int32 // set by Kill()
+	mu         sync.Mutex
+	me         int
+	rf         *raft.Raft
+	applyCh    chan raft.ApplyMsg
+	dead       int32 // set by Kill()
+	db         map[string]string
+	lastApply  map[int]int
+	commitChan map[int]chan OpReply
 
 	maxraftstate int // snapshot if log grows this big
 
 	// Your definitions here.
 }
 
+func (kv *KVServer) startAndWaitCommit(op Op) OpReply {
+	index, _, isLeader := kv.rf.Start(op)
+	if !isLeader || kv.killed() {
+		return OpReply{Err: ErrWrongLeader}
+	} else {
+		opReply := kv.waitCommitChan(index)
+		if opReply.op.ReqId == op.ReqId && opReply.op.ClientId == op.ClientId {
+			return opReply
+		} else {
+			return OpReply{Err: ErrNotCommit}
+		}
+	}
+}
+
+func (kv *KVServer) waitCommitChan(index int) OpReply {
+	var op OpReply
+	kv.mu.Lock()
+	commitChan, ok := kv.commitChan[index]
+	if !ok {
+		commitChan = make(chan OpReply)
+		kv.commitChan[index] = commitChan
+	}
+	kv.mu.Unlock()
+	select {
+	case op = <-commitChan:
+	case <-time.After(WaitCommitTime):
+		op = OpReply{Err: ErrNotCommit}
+	}
+	go kv.deleteCommitChan(index)
+	return op
+}
+
+func (kv *KVServer) deleteCommitChan(index int) {
+	kv.mu.Lock()
+	delete(kv.commitChan, index)
+	kv.mu.Unlock()
+}
 
 func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
-	// Your code here.
+	opReply := kv.startAndWaitCommit(Op{Name: "Get", Key: args.Key, ClientId: args.ClientId, ReqId: args.ReqId})
+	reply.Err = opReply.Err
+	reply.Value = opReply.value
+	reply.ServerId = kv.me
 }
 
 func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 	// Your code here.
+	kv.mu.Lock()
+	lastReqId :=kv.lastApply[args.ClientId] 
+	kv.mu.Unlock()
+	if lastReqId < args.ReqId {
+		OpReply := kv.startAndWaitCommit(Op{Name: args.Op, Key: args.Key, Value: args.Value, ClientId: args.ClientId, ReqId: args.ReqId})
+		reply.Err = OpReply.Err
+	} else {
+		reply.Err = OK
+	}
+	reply.ServerId = kv.me
 }
 
 // the tester calls Kill() when a KVServer instance won't
@@ -90,8 +155,42 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 
 	kv.applyCh = make(chan raft.ApplyMsg)
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
+	kv.db = make(map[string]string)
+	kv.commitChan = make(map[int]chan OpReply)
+	kv.lastApply = make(map[int]int)
 
+	go kv.apply()
 	// You may need initialization code here.
 
 	return kv
+}
+
+func (kv *KVServer) apply() {
+	for !kv.killed() {
+		msg := <-kv.applyCh
+		if msg.CommandValid {
+			value := ""
+			op := msg.Command.(Op)
+			kv.mu.Lock()
+			if op.Name == "Get" {
+				value = kv.db[op.Key]
+			} else if kv.lastApply[op.ClientId] < op.ReqId {
+				if op.Name == "Put" {
+					kv.db[op.Key] = op.Value
+				} else if op.Name == "Append" {
+					kv.db[op.Key] += op.Value
+				}
+				kv.lastApply[op.ClientId] = op.ReqId
+			} 
+			kv.mu.Unlock()
+			_, isLeader:=kv.rf.GetState();
+			DPrintf("server %d leader %v reqId %d apply msg %v value %s", kv.me,isLeader, op.ReqId, msg.Command, value)
+			kv.mu.Lock()
+			commitChan, ok := kv.commitChan[msg.CommandIndex]
+			kv.mu.Unlock()
+			if ok && isLeader {
+				commitChan <- OpReply{Err: OK, value: value, op: op}
+			}
+		}
+	}
 }

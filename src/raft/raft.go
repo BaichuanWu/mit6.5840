@@ -19,6 +19,7 @@ package raft
 
 import (
 	"fmt"
+	// "log"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -39,7 +40,6 @@ const (
 	checkTimeoutEnd      = 350
 	electionTimeoutStart = 400
 	electionTimeoutEnd   = 700
-	applyInterval        = 100
 )
 
 // as each Raft peer becomes aware that successive log entries are
@@ -65,24 +65,26 @@ type ApplyMsg struct {
 
 // A Go object implementing a single Raft peer.
 type Raft struct {
-	mu              sync.Mutex          // Lock to protect shared access to this peer's state
-	peers           []*labrpc.ClientEnd // RPC end points of all peers
-	persister       *Persister          // Object to hold this peer's persisted state
-	me              int                 // this peer's index into peers[]
-	dead            int32               // set by Kill()
-	currentTerm     int
-	votedFor        int
-	log             *SnapshotLog
-	applyCh         chan ApplyMsg
-	commitIndex     int
-	lastApplied     int
-	nextIndex       []int
-	matchIndex      []int
-	state           RaftState
-	lastConnected   time.Time
-	electionTimeout time.Duration
-	votedGranted    int
-	applyMsg        []ApplyMsg
+	mu                  sync.Mutex          // Lock to protect shared access to this peer's state
+	peers               []*labrpc.ClientEnd // RPC end points of all peers
+	persister           *Persister          // Object to hold this peer's persisted state
+	me                  int                 // this peer's index into peers[]
+	dead                int32               // set by Kill()
+	currentTerm         int
+	votedFor            int
+	log                 *SnapshotLog
+	applyCh             chan ApplyMsg
+	commitIndex         int
+	lastApplied         int
+	lastSnapshotApplied int
+	nextIndex           []int
+	matchIndex          []int
+	LeaderLastCommit    []int //ignore stale appendEntry
+	state               RaftState
+	lastConnected       time.Time
+	electionTimeout     time.Duration
+	votedGranted        int
+	applyCond           *sync.Cond
 
 	// Your data here (2A, 2B, 2C).
 	// Look at the paper's Figure 2 for a description of what
@@ -129,6 +131,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		rf.log.append(LogEntry{Term: term, Command: command})
 		// DPrintf("start append server %s", rf.info())
 		rf.persist()
+		go rf.broadcastAppendEntries()
 	}
 	return index, term, isLeader
 }
@@ -183,10 +186,12 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.state = StateFollower
 	rf.applyCh = applyCh
 	rf.log = new(SnapshotLog)
+	rf.applyCond = sync.NewCond(&rf.mu)
 	// Your initialization code here (2A, 2B, 2C).
 	rf.resetElectionTimeout()
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
+	rf.LeaderLastCommit = make([]int, len(peers))
 
 	// start ticker goroutine to start elections
 	go rf.ticker()

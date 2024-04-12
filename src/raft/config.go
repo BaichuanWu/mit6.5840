@@ -195,7 +195,6 @@ func (cfg *config) ingestSnap(i int, snapshot []byte, index int) string {
 		return "snapshot Decode() error"
 	}
 	if index != -1 && index != lastIncludedIndex {
-		DPrintf("not match %d  -------- decode %d", index, lastIncludedIndex)
 		err := fmt.Sprintf("server %v snapshot doesn't match m.SnapshotIndex", i)
 		return err
 	}
@@ -603,9 +602,6 @@ func (cfg *config) one(cmd interface{}, expectedServers int, retry bool) int {
 		}
 	}
 	if cfg.checkFinished() == false {
-		for _, r := range cfg.rafts {
-			DPrintf(r.info())
-		}
 		cfg.t.Fatalf("one(%v) failed to reach agreement", cmd)
 	}
 	return -1
